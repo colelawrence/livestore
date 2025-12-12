@@ -1,0 +1,6 @@
+[submodule ".context/twitter-scale-mastodon"]
+	path = .context/twitter-scale-mastodon
+	url = https://github.com/redplanetlabs/twitter-scale-mastodon
+[submodule ".context/rama-demo-gallery"]
+	path = .context/rama-demo-gallery
+	url = https://github.com/redplanetlabs/rama-demo-gallery
