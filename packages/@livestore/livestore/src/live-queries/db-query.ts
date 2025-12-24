@@ -17,7 +17,7 @@ import type { Thunk } from '../reactive.ts'
 import { isThunk, NOT_REFRESHED_YET } from '../reactive.ts'
 import type { RefreshReason } from '../store/store-types.ts'
 import { StoreInternalsSymbol } from '../store/store-types.ts'
-import { isValidFunctionString } from '../utils/function-string.ts'
+import { getFunctionIdentity, isValidFunctionString } from '../utils/function-string.ts'
 import type { DepKey, GetAtomResult, LiveQueryDef, ReactivityGraph, ReactivityGraphContext } from './base-class.ts'
 import { depsToString, LiveStoreQueryBase, makeGetAtomResult, withRCMap } from './base-class.ts'
 import { makeExecBeforeFirstRun, rowQueryLabel } from './client-document-get-query.ts'
@@ -101,14 +101,20 @@ export const queryDb: {
     },
   ): LiveQueryDef<TResult>
 } = (queryInput, options) => {
-  const { queryString, extraDeps } = getQueryStringAndExtraDeps(queryInput)
+  const { queryString, extraDeps, queryInputFn } = getQueryStringAndExtraDeps(queryInput)
 
-  const hash = [queryString, options?.deps ? depsToString(options.deps) : undefined, depsToString(extraDeps)]
-    .filter(Boolean)
-    .join('-')
-
-  if (isValidFunctionString(hash)._tag === 'invalid') {
-    throw new Error(`On Expo/React Native, db queries must provide a \`deps\` option`)
+  let hash: string
+  if (options?.deps) {
+    // Explicit deps provided - use them as the primary key
+    hash = [queryString, depsToString(options.deps), depsToString(extraDeps)].filter(Boolean).join('-')
+  } else if (isValidFunctionString(queryString)._tag === 'invalid' && queryInputFn !== undefined) {
+    // fn.toString() is useless (Hermes bytecode) - fall back to object identity.
+    // This means the same function reference deduplicates, but parameterized factories
+    // creating new functions each call will NOT deduplicate without explicit deps.
+    hash = [getFunctionIdentity(queryInputFn), depsToString(extraDeps)].filter(Boolean).join('-')
+  } else {
+    // Standard case - use query string
+    hash = [queryString, depsToString(extraDeps)].filter(Boolean).join('-')
   }
 
   if (hash.trim() === '') {
@@ -154,7 +160,7 @@ const bindValuesToDepKey = (bindValues: Bindable | undefined): DepKey => {
 
 const getQueryStringAndExtraDeps = (
   queryInput: QueryInput<any, any> | ((get: GetAtomResult) => QueryInput<any, any>),
-): { queryString: string; extraDeps: DepKey } => {
+): { queryString: string; extraDeps: DepKey; queryInputFn?: (get: GetAtomResult) => QueryInput<any, any> } => {
   if (isQueryBuilder(queryInput)) {
     const { query, bindValues } = queryInput.asSql()
     return { queryString: query, extraDeps: bindValuesToDepKey(bindValues) }
@@ -165,7 +171,8 @@ const getQueryStringAndExtraDeps = (
   }
 
   if (typeof queryInput === 'function') {
-    return { queryString: queryInput.toString(), extraDeps: [] }
+    // Return the function reference so we can use object identity as fallback
+    return { queryString: queryInput.toString(), extraDeps: [], queryInputFn: queryInput }
   }
 
   return shouldNeverHappen(`Invalid query input: ${queryInput}`)

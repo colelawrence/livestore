@@ -4,7 +4,7 @@ import * as otel from '@opentelemetry/api'
 
 import type { Thunk } from '../reactive.ts'
 import type { RefreshReason } from '../store/store-types.ts'
-import { isValidFunctionString } from '../utils/function-string.ts'
+import { getFunctionIdentity, isValidFunctionString } from '../utils/function-string.ts'
 import type { DepKey, GetAtomResult, LiveQueryDef, ReactivityGraph, ReactivityGraphContext } from './base-class.ts'
 import { depsToString, LiveStoreQueryBase, makeGetAtomResult, withRCMap } from './base-class.ts'
 
@@ -64,9 +64,15 @@ export const computed = <TResult>(
     deps?: DepKey
   },
 ): LiveQueryDef<TResult> => {
-  const hash = options?.deps ? depsToString(options.deps) : fn.toString()
-  if (isValidFunctionString(hash)._tag === 'invalid') {
-    throw new Error(`On Expo/React Native, computed queries must provide a \`deps\` option`)
+  let hash: string
+  if (options?.deps) {
+    hash = depsToString(options.deps)
+  } else {
+    const fnStr = fn.toString()
+    // If fn.toString() is useless (Hermes bytecode), fall back to object identity.
+    // This means the same function reference deduplicates, but parameterized factories
+    // creating new functions each call will NOT deduplicate without explicit deps.
+    hash = isValidFunctionString(fnStr)._tag === 'valid' ? fnStr : getFunctionIdentity(fn)
   }
 
   const def: LiveQueryDef<any> = {
