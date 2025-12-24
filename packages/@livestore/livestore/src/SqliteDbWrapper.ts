@@ -126,9 +126,22 @@ export class SqliteDbWrapper implements SqliteDb {
     }
   }
 
-  rollback(changeset: Uint8Array<ArrayBuffer>) {
+  /**
+   * Rolls back the given changeset by applying its inverse.
+   *
+   * @param changeset - The changeset to roll back
+   * @param affectedTables - Optional set of table names to invalidate in the query cache.
+   *                         If provided, the cache entries for these tables will be invalidated
+   *                         after applying the rollback, ensuring subsequent queries return fresh data.
+   *                         If not provided, no cache invalidation occurs (backward compatible).
+   */
+  rollback(changeset: Uint8Array<ArrayBuffer>, affectedTables?: ReadonlySet<string>) {
     const invertedChangeset = this.db.makeChangeset(changeset).invert()
     invertedChangeset.apply()
+
+    if (affectedTables && affectedTables.size > 0) {
+      this.resultCache.invalidate(affectedTables)
+    }
   }
 
   getTablesUsed(query: string) {
