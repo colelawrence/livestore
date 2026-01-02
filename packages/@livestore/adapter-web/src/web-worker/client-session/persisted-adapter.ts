@@ -502,9 +502,9 @@ export const makePersistedAdapter =
             yield* Effect.logDebug('[@livestore/adapter-web:client-session] client-session shutdown', gotLocky, ex)
           }
 
-          if (gotLocky) {
-            yield* Deferred.succeed(lockDeferred, undefined)
-          }
+          // Always attempt to release the lock - idempotent and safe even if not held
+          // Fixes orphaned fiber hang where lock acquired after scope interruption
+          yield* Deferred.succeed(lockDeferred, undefined).pipe(Effect.ignore)
         }).pipe(Effect.tapCauseLogPretty, Effect.orDie),
       )
 

@@ -51,6 +51,18 @@ export const waitForDeferredLock = (deferred: Deferred.Deferred<void>, lockName:
   Effect.async<void>((cb, signal) => {
     if (signal.aborted) return
 
+    // Resolve deferred to signal lock release - idempotent, safe to call multiple times
+    const resolveDeferred = () => {
+      try {
+        Effect.runSync(Deferred.succeed(deferred, undefined).pipe(Effect.ignore))
+      } catch {
+        // Ignore - deferred may already be resolved
+      }
+    }
+
+    // Resolve deferred when abort signal fires to prevent hanging
+    signal.addEventListener('abort', resolveDeferred)
+
     navigator.locks
       .request(lockName, { signal, mode: 'exclusive', ifAvailable: false }, (_lock) => {
         // immediately continuing calling Effect since we have the lock
@@ -59,7 +71,7 @@ export const waitForDeferredLock = (deferred: Deferred.Deferred<void>, lockName:
         // the code below is still running
 
         // holding lock until deferred is resolved
-        return Effect.runPromise(Deferred.await(deferred))
+        return Effect.runPromise(Deferred.await(deferred)).finally(resolveDeferred)
       })
       .catch((error) => {
         if (error.code === 20 && error.message === 'signal is aborted without reason') {
@@ -72,46 +84,65 @@ export const waitForDeferredLock = (deferred: Deferred.Deferred<void>, lockName:
 
 export const tryGetDeferredLock = (deferred: Deferred.Deferred<void>, lockName: string) =>
   Effect.async<boolean>((cb, signal) => {
+    // Resolve deferred to signal lock release - idempotent, safe to call multiple times
+    const resolveDeferred = () => {
+      try {
+        Effect.runSync(Deferred.succeed(deferred, undefined).pipe(Effect.ignore))
+      } catch {
+        // Ignore - deferred may already be resolved
+      }
+    }
+
     navigator.locks.request(lockName, { mode: 'exclusive', ifAvailable: true }, (lock) => {
       cb(Effect.succeed(lock !== null))
+
+      if (lock === null) return
 
       // the code below is still running
 
       const abortPromise = new Promise<void>((resolve) => {
         signal.addEventListener('abort', () => {
+          resolveDeferred()
           resolve()
         })
       })
 
       // holding lock until deferred is resolved
-      return Promise.race([
-        Effect.runPromise(Deferred.await(deferred)),
-        // .finally(() =>
-        //   console.log('[@livestore/utils:WebLock] tryGetDeferredLock. finally', lockName),
-        // ),
-        abortPromise,
-      ])
+      return Promise.race([Effect.runPromise(Deferred.await(deferred)), abortPromise]).finally(
+        resolveDeferred,
+      )
     })
   })
 
 export const stealDeferredLock = (deferred: Deferred.Deferred<void>, lockName: string) =>
   Effect.async<boolean>((cb, signal) => {
+    // Resolve deferred to signal lock release - idempotent, safe to call multiple times
+    const resolveDeferred = () => {
+      try {
+        Effect.runSync(Deferred.succeed(deferred, undefined).pipe(Effect.ignore))
+      } catch {
+        // Ignore - deferred may already be resolved
+      }
+    }
+
     navigator.locks.request(lockName, { mode: 'exclusive', steal: true }, (lock) => {
       cb(Effect.succeed(lock !== null))
+
+      if (lock === null) return
 
       // the code below is still running
 
       const abortPromise = new Promise<void>((resolve) => {
         signal.addEventListener('abort', () => {
+          resolveDeferred()
           resolve()
         })
       })
 
       // holding lock until deferred is resolved
-      return Promise.race([Effect.runPromise(Deferred.await(deferred)), abortPromise])
-      // .finally(() =>
-      //   console.log('[@livestore/utils:WebLock] tryGetDeferredLock. finally', lockName),
-      // )
+      return Promise.race([Effect.runPromise(Deferred.await(deferred)), abortPromise]).finally(
+        resolveDeferred,
+      )
     })
   })
 
