@@ -186,6 +186,11 @@ const makeSqliteDb_ = <TMetadata extends Metadata>({
         },
       }
     },
+    getAffectedTables: (_changeset) => {
+      // TODO: expo-sqlite doesn't expose changeset iteration APIs yet
+      // Return empty set for now - caller must provide explicit tables
+      return new Set<string>()
+    },
   } satisfies SqliteDb
 
   return sqliteDb

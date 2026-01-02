@@ -31,6 +31,7 @@ export interface SqliteDb<TReq = any, TMetadata extends TReq = TReq> {
   destroy(): void
   session(): SqliteDbSession
   makeChangeset: (data: Uint8Array<ArrayBuffer>) => SqliteDbChangeset
+  getAffectedTables: (changeset: Uint8Array<ArrayBuffer>) => Set<string>
 }
 
 export type SqliteDebugInfo = { head: EventSequenceNumber.Client.Composite }

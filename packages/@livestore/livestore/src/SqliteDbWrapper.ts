@@ -132,15 +132,17 @@ export class SqliteDbWrapper implements SqliteDb {
    * @param changeset - The changeset to roll back
    * @param affectedTables - Optional set of table names to invalidate in the query cache.
    *                         If provided, the cache entries for these tables will be invalidated
-   *                         after applying the rollback, ensuring subsequent queries return fresh data.
-   *                         If not provided, no cache invalidation occurs (backward compatible).
+   *                         after applying the rollback. If not provided, tables are automatically
+   *                         extracted from the changeset blob using wa-sqlite iteration APIs.
    */
   rollback(changeset: Uint8Array<ArrayBuffer>, affectedTables?: ReadonlySet<string>) {
     const invertedChangeset = this.db.makeChangeset(changeset).invert()
     invertedChangeset.apply()
 
-    if (affectedTables && affectedTables.size > 0) {
-      this.resultCache.invalidate(affectedTables)
+    const tablesToInvalidate = affectedTables ?? this.db.getAffectedTables(changeset)
+
+    if (tablesToInvalidate.size > 0) {
+      this.resultCache.invalidate(tablesToInvalidate)
     }
   }
 

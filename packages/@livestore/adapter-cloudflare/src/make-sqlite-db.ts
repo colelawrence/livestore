@@ -249,6 +249,11 @@ export const makeSqliteDb_ = <
 
       return changeset
     },
+    getAffectedTables: (_changeset) => {
+      // NOTE: Changeset iteration not supported with public API
+      // Return empty set - caller must provide explicit tables
+      return new Set<string>()
+    },
   } satisfies SqliteDb<TMetadata>
 
   metadata.configureDb(sqliteDb)

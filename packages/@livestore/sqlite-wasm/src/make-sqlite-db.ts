@@ -257,6 +257,29 @@ export const makeSqliteDb = <
 
       return changeset
     },
+    getAffectedTables: (changeset) => {
+      const tables = new Set<string>()
+      try {
+        const pIter = sqlite3.changeset_start(changeset)
+        try {
+          let result = sqlite3.changeset_next(pIter)
+          while (result === SqliteConstants.SQLITE_ROW) {
+            const op = sqlite3.changeset_op(pIter)
+            if (op.tableName) {
+              tables.add(op.tableName)
+            }
+            result = sqlite3.changeset_next(pIter)
+          }
+        } finally {
+          sqlite3.changeset_finalize(pIter)
+        }
+      } catch (e) {
+        // If changeset is malformed or iteration fails, return empty Set
+        // rather than crashing
+        return new Set<string>()
+      }
+      return tables
+    },
   } satisfies SqliteDb<TMetadata>
 
   metadata.configureDb(sqliteDb)

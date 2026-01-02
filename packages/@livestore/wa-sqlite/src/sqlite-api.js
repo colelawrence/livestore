@@ -992,6 +992,11 @@ export function Factory(Module) {
     };
   })();
 
+  // Map to track allocated changeset data buffers for each iterator
+  // This is necessary because sqlite3changeset_start needs the data to remain valid
+  // until sqlite3changeset_finalize is called
+  const changesetIteratorBuffers = new Map();
+
   sqlite3.changeset_start = (function() {
     const fname = 'sqlite3changeset_start';
     const f = Module.cwrap(fname, ...decl('nnn:n'));
@@ -1014,10 +1019,13 @@ export function Factory(Module) {
         // Retrieve the changeset iterator handle
         const pIter = Module.getValue(ppIter, 'i32');
 
+        // Store the data pointer so we can free it later
+        // The changeset data must remain valid for the lifetime of the iterator
+        changesetIteratorBuffers.set(pIter, inPtr);
+
         return pIter;
       } finally {
-        // Free allocated memory
-        Module._sqlite3_free(inPtr);
+        // Only free the pointer to the iterator pointer, not the data itself
         Module._free(ppIter);
       }
     };
@@ -1028,7 +1036,67 @@ export function Factory(Module) {
     const f = Module.cwrap(fname, ...decl('n:n'));
     return function(pIter) {
       const result = f(pIter);
+
+      // Free the changeset data buffer that we allocated in changeset_start
+      const inPtr = changesetIteratorBuffers.get(pIter);
+      if (inPtr !== undefined) {
+        Module._sqlite3_free(inPtr);
+        changesetIteratorBuffers.delete(pIter);
+      }
+
       return result;
+    };
+  })();
+
+  sqlite3.changeset_next = (function() {
+    const fname = 'sqlite3changeset_next';
+    const f = Module.cwrap(fname, ...decl('n:n'));
+    return function(pIter) {
+      if (!pIter) {
+        throw new SQLiteError('Invalid iterator', SQLite.SQLITE_MISUSE);
+      }
+      const result = f(pIter);
+      return result;
+    };
+  })();
+
+  sqlite3.changeset_op = (function() {
+    const fname = 'sqlite3changeset_op';
+    const f = Module.cwrap(fname, ...decl('nnnnn:n'));
+    return function(pIter) {
+      if (!pIter) {
+        throw new SQLiteError('Invalid iterator', SQLite.SQLITE_MISUSE);
+      }
+      const pzTab = Module._malloc(4);
+      const pnCol = Module._malloc(4);
+      const pOp = Module._malloc(4);
+      const pbIndirect = Module._malloc(4);
+
+      try {
+        const result = f(pIter, pzTab, pnCol, pOp, pbIndirect);
+
+        if (result !== SQLite.SQLITE_OK) {
+          check(fname, result);
+        }
+
+        const tabPtr = Module.getValue(pzTab, 'i32');
+        const tableName = tabPtr ? Module.UTF8ToString(tabPtr) : '';
+        const columnCount = Module.getValue(pnCol, 'i32');
+        const opType = Module.getValue(pOp, 'i32');
+        const indirect = Module.getValue(pbIndirect, 'i32') !== 0;
+
+        return {
+          tableName,
+          columnCount,
+          opType,
+          indirect
+        };
+      } finally {
+        Module._free(pzTab);
+        Module._free(pnCol);
+        Module._free(pOp);
+        Module._free(pbIndirect);
+      }
     };
   })();
 

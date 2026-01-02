@@ -992,11 +992,32 @@ interface SQLiteAPI {
 
   /**
    * Finalize a changeset iterator.
-   * 
+   *
    * @param pIter changeset iterator pointer
    * @returns `SQLITE_OK` (throws exception on error)
    */
   changeset_finalize(pIter: number): number;
+
+  /**
+   * Advance a changeset iterator to the next change.
+   *
+   * @param pIter changeset iterator pointer
+   * @returns SQLITE_ROW (100) if there are more records, SQLITE_DONE (101) when exhausted
+   */
+  changeset_next(pIter: number): number;
+
+  /**
+   * Get information about the current operation in a changeset iterator.
+   *
+   * @param pIter changeset iterator pointer
+   * @returns Object containing tableName, columnCount, opType, and indirect flag
+   */
+  changeset_op(pIter: number): {
+    tableName: string;
+    columnCount: number;
+    opType: number;
+    indirect: boolean;
+  };
 
   /**
    * Invert a changeset.
